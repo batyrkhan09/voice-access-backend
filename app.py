@@ -10,7 +10,7 @@ from time import time
 
 app = Flask(__name__)
 
-# Разрешаем доступ только с Netlify-домена
+# Разрешаем только frontend с Netlify
 CORS(app, resources={r"/api/*": {"origins": "https://voice-access.netlify.app"}}, supports_credentials=True)
 
 init_db()
@@ -78,8 +78,11 @@ def verify():
     return jsonify(result)
 
 
-@app.route("/api/register", methods=["POST"])
+@app.route("/api/register", methods=["POST", "OPTIONS"])
 def register():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+
     data = request.form
     username = data.get("username")
     phrase = data.get("phrase")
@@ -108,6 +111,7 @@ def register():
         return jsonify({"success": False, "message": f"Ошибка базы данных: {str(e)}"}), 500
 
 
+# === CORS Preflight обработка ===
 def _build_cors_preflight_response():
     response = make_response()
     response.headers.add("Access-Control-Allow-Origin", "https://voice-access.netlify.app")
