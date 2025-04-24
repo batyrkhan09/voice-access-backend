@@ -5,36 +5,41 @@ from speechbrain.pretrained import SpeakerRecognition
 from speechbrain.dataio.dataio import read_audio
 import subprocess
 
-# 🔧 Отключаем предупреждение про симлинки (опционально)
+# 🔧 Убираем предупреждение
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-# ✅ Указываем путь к ffmpeg локально (НЕ ЗАБУДЬ: для Render он не нужен или замени на просто 'ffmpeg')
+# ✅ Установка ffmpeg
 ffmpeg_path = r"C:\\Users\\tokta\\Desktop\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe"
-if os.path.exists(ffmpeg_path):
-    AudioSegment.converter = ffmpeg_path
-else:
-    AudioSegment.converter = "ffmpeg"
+AudioSegment.converter = ffmpeg_path if os.path.exists(ffmpeg_path) else "ffmpeg"
 
-# ✅ Загрузка модели speaker verification с HuggingFace
-verifier = SpeakerRecognition.from_hparams(
-    source="speechbrain/spkrec-ecapa-voxceleb",
-    savedir="pretrained_models/spkrec-ecapa-voxceleb",
-    run_opts={"use_symlinks": False}
-)
-
-# 📁 Папка для хранения эмбеддингов
+# 📁 Папка для эмбеддингов
 EMBEDDING_DIR = "voice_embeddings"
 os.makedirs(EMBEDDING_DIR, exist_ok=True)
 
-# === 📥 При регистрации: сохраняем отпечаток голоса ===
+# === ✅ Ленивая загрузка модели один раз ===
+_verifier = None
+
+def get_verifier():
+    global _verifier
+    if _verifier is None:
+        print("[INFO] Загружаем модель speaker verification...")
+        _verifier = SpeakerRecognition.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            savedir="pretrained_models/spkrec-ecapa-voxceleb",
+            run_opts={"use_symlinks": False}
+        )
+    return _verifier
+
+# === 📥 Регистрация ===
 def save_user_voice_embedding(audio_path, username):
     wav_path = convert_to_wav(audio_path)
     signal = read_audio(wav_path)
-    embedding = verifier.encode_batch(signal.unsqueeze(0))  # Добавляем измерение батча
+    verifier = get_verifier()
+    embedding = verifier.encode_batch(signal.unsqueeze(0))
     torch.save(embedding, os.path.join(EMBEDDING_DIR, f"{username}.pt"))
     os.remove(wav_path)
 
-# === 🔐 При входе: сравниваем голос с эталоном ===
+# === 🔐 Проверка ===
 def verify_user_voice(audio_path, username):
     embedding_path = os.path.join(EMBEDDING_DIR, f"{username}.pt")
     if not os.path.exists(embedding_path):
@@ -42,6 +47,7 @@ def verify_user_voice(audio_path, username):
 
     wav_path = convert_to_wav(audio_path)
     signal = read_audio(wav_path)
+    verifier = get_verifier()
     test_embedding = verifier.encode_batch(signal.unsqueeze(0))
     ref_embedding = torch.load(embedding_path)
 
@@ -54,20 +60,20 @@ def verify_user_voice(audio_path, username):
     print(f"[DEBUG] Similarity: {similarity:.4f}")
     return similarity > 0.5, f"Similarity: {similarity:.4f}"
 
-# === 🎧 Конвертация webm → wav 16kHz mono ===
+# === 🎧 Конвертация webm → wav ===
 def convert_to_wav(webm_path):
     wav_path = webm_path.replace(".webm", ".wav")
     ffmpeg = AudioSegment.converter
 
     try:
-        print(f"[DEBUG] Начинаем конвертацию: {webm_path}")
+        print(f"[DEBUG] Конвертация: {webm_path}")
         result = subprocess.run(
             [
                 ffmpeg,
-                "-y",                     # overwrite output
+                "-y",
                 "-i", webm_path,
-                "-ar", "16000",           # sample rate
-                "-ac", "1",               # mono
+                "-ar", "16000",
+                "-ac", "1",
                 wav_path
             ],
             stdout=subprocess.PIPE,
@@ -78,7 +84,6 @@ def convert_to_wav(webm_path):
             print(f"[ERROR] ffmpeg stderr:\n{result.stderr.decode()}")
             raise Exception("FFmpeg конвертация не удалась")
 
-        print(f"[DEBUG] Успешно сконвертировано: {wav_path}")
         return wav_path
 
     except Exception as e:
