@@ -22,7 +22,7 @@ def can_record():
     data = request.get_json()
     username = data.get("username")
     now = time()
-    
+
     attempts, last_time = login_attempts.get(username, [0, 0])
     if attempts >= MAX_ATTEMPTS and (now - last_time) < BLOCK_TIME:
         remaining = int(BLOCK_TIME - (now - last_time))
@@ -83,21 +83,23 @@ def register():
         return jsonify({"success": False, "message": "Имя, фраза и аудио обязательны"}), 400
 
     try:
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO users (username, passphrase) VALUES (?, ?)', (username, phrase))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect('database.db', timeout=10) as conn:
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO users (username, passphrase) VALUES (?, ?)', (username, phrase))
+            conn.commit()
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp:
             audio_path = temp.name
             audio_file.save(audio_path)
+
         save_user_voice_embedding(audio_path, username)
         os.remove(audio_path)
 
         return jsonify({"success": True, "message": "Пользователь зарегистрирован!"})
     except sqlite3.IntegrityError:
         return jsonify({"success": False, "message": "Такой пользователь уже существует"}), 409
+    except sqlite3.OperationalError as e:
+        return jsonify({"success": False, "message": f"Ошибка базы данных: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
