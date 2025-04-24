@@ -1,7 +1,8 @@
 import os
 import torch
 from pydub import AudioSegment
-from speechbrain.inference import SpeakerRecognition
+from speechbrain.pretrained import SpeakerRecognition
+
 from speechbrain.dataio.dataio import read_audio
 import subprocess
 
