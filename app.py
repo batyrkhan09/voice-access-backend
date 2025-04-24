@@ -16,13 +16,21 @@ init_db()
 
 login_attempts = {}
 MAX_ATTEMPTS = 5
-BLOCK_TIME = 30  # сек
+BLOCK_TIME = 30
 
-@app.route("/api/can-record", methods=["POST", "OPTIONS"])
-def can_record():
+# === 🛡 Обработка всех preflight (OPTIONS) запросов глобально ===
+@app.before_request
+def handle_preflight():
     if request.method == "OPTIONS":
-        return _build_cors_preflight_response()
+        response = make_response()
+        response.headers["Access-Control-Allow-Origin"] = "https://voice-access.netlify.app"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
 
+@app.route("/api/can-record", methods=["POST"])
+def can_record():
     data = request.get_json()
     username = data.get("username")
     now = time()
@@ -78,11 +86,8 @@ def verify():
     return jsonify(result)
 
 
-@app.route("/api/register", methods=["POST", "OPTIONS"])
+@app.route("/api/register", methods=["POST"])
 def register():
-    if request.method == "OPTIONS":
-        return _build_cors_preflight_response()
-
     data = request.form
     username = data.get("username")
     phrase = data.get("phrase")
@@ -114,16 +119,7 @@ def register():
         return jsonify({"success": False, "message": f"Ошибка базы данных: {str(e)}"}), 500
 
 
-# === Preflight CORS
-def _build_cors_preflight_response():
-    response = make_response()
-    response.headers.add("Access-Control-Allow-Origin", "https://voice-access.netlify.app")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type")
-    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-    response.headers.add("Access-Control-Allow-Credentials", "true")
-    return response
-
-# === Always add CORS headers
+# === 🛡 Добавляем заголовки CORS ко всем ответам ===
 @app.after_request
 def apply_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "https://voice-access.netlify.app"
@@ -132,7 +128,7 @@ def apply_cors(response):
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     return response
 
-# === Error protection with CORS
+# === Ошибки тоже с CORS ===
 @app.errorhandler(Exception)
 def handle_error(e):
     response = jsonify({"success": False, "message": str(e)})
