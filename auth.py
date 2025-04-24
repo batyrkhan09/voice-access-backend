@@ -4,26 +4,35 @@ import os
 import sqlite3
 from pydub import AudioSegment
 
-# Указываем путь к ffmpeg вручную (важно!)
-AudioSegment.converter = r"C:\\Users\\tokta\\Desktop\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe"
+# Указываем путь к ffmpeg (можно просто "ffmpeg" на сервере)
+AudioSegment.converter = "ffmpeg"
 
 def verify_user(audio_file, username):
     recognizer = sr.Recognizer()
 
-    # Сохраняем загруженный webm-файл вручную через .read()
+    # Сохраняем временно .webm файл
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
         webm_path = temp_audio.name
         temp_audio.write(audio_file.read())
 
-    # Конвертация webm → wav
+    # Проверка размера файла (не больше 5МБ)
+    if os.path.getsize(webm_path) > 5 * 1024 * 1024:
+        try:
+            os.remove(webm_path)
+        except:
+            pass
+        return {"success": False, "message": "Аудиофайл слишком большой"}
+
+    # Конвертация в .wav
     wav_path = webm_path.replace(".webm", ".wav")
     try:
-        print(f"[DEBUG] Конвертация: {webm_path} → {wav_path}")
         audio = AudioSegment.from_file(webm_path, format="webm")
         audio.export(wav_path, format="wav")
     except Exception as e:
         print(f"[ERROR] Конвертация не удалась: {e}")
-        return {"success": False, "message": "Ошибка при конвертации webm → wav"}
+        try: os.remove(webm_path)
+        except: pass
+        return {"success": False, "message": "Ошибка при конвертации аудио"}
 
     # Распознавание речи
     try:
@@ -33,9 +42,14 @@ def verify_user(audio_file, username):
             print(f"[INFO] Распознанный текст: {text}")
     except Exception as e:
         print(f"[ERROR] Ошибка распознавания: {e}")
-        return {"success": False, "message": "Ошибка при распознавании голоса"}
+        try:
+            os.remove(webm_path)
+            os.remove(wav_path)
+        except:
+            pass
+        return {"success": False, "message": "Ошибка при распознавании речи"}
 
-    # Проверка в базе данных
+    # Поиск фразы в базе
     try:
         conn = sqlite3.connect('database.db')
         cursor = conn.cursor()
@@ -43,15 +57,15 @@ def verify_user(audio_file, username):
         row = cursor.fetchone()
         conn.close()
     except Exception as e:
-        print(f"[ERROR] Ошибка базы данных: {e}")
         return {"success": False, "message": "Ошибка базы данных"}
 
-    # Удаление временных файлов
-    os.remove(webm_path)
-    os.remove(wav_path)
+    try:
+        os.remove(webm_path)
+        os.remove(wav_path)
+    except:
+        pass
 
-    # Сравнение фразы
     if row and row[0] in text:
         return {"success": True, "message": "Доступ разрешён ✅"}
     else:
-        return {"success": False, "message": "Доступ запрещён ❌"}
+        return {"success": False, "message": "Фраза не распознана ❌"}

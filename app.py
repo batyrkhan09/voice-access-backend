@@ -10,12 +10,10 @@ from time import time
 
 app = Flask(__name__)
 
-# Разрешаем доступ только с Netlify-домена
 CORS(app, resources={r"/api/*": {"origins": "https://voice-access.netlify.app"}}, supports_credentials=True)
 
 init_db()
 
-# === 🔐 Ограничение попыток входа ===
 login_attempts = {}
 MAX_ATTEMPTS = 5
 BLOCK_TIME = 30  # сек
@@ -62,7 +60,8 @@ def verify():
 
     match, score_text = verify_user_voice(audio_path, username)
     if not match:
-        os.remove(audio_path)
+        try: os.remove(audio_path)
+        except: pass
         if attempts + 1 >= MAX_ATTEMPTS:
             login_attempts[username] = [MAX_ATTEMPTS, now]
         else:
@@ -70,7 +69,8 @@ def verify():
         return jsonify({"success": False, "message": "Голос не совпадает ❌\n" + score_text})
 
     result = verify_user(open(audio_path, "rb"), username)
-    os.remove(audio_path)
+    try: os.remove(audio_path)
+    except: pass
 
     if result["success"]:
         login_attempts[username] = [0, 0]
@@ -94,6 +94,10 @@ def register():
     try:
         with sqlite3.connect('database.db', timeout=10) as conn:
             cursor = conn.cursor()
+            cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+            if cursor.fetchone():
+                return jsonify({"success": False, "message": "Такой пользователь уже существует"}), 409
+
             cursor.execute('INSERT INTO users (username, passphrase) VALUES (?, ?)', (username, phrase))
             conn.commit()
 
@@ -105,13 +109,12 @@ def register():
         os.remove(audio_path)
 
         return jsonify({"success": True, "message": "Пользователь зарегистрирован!"})
-    except sqlite3.IntegrityError:
-        return jsonify({"success": False, "message": "Такой пользователь уже существует"}), 409
+
     except sqlite3.OperationalError as e:
         return jsonify({"success": False, "message": f"Ошибка базы данных: {str(e)}"}), 500
 
 
-# === Preflight CORS ===
+# === Preflight CORS
 def _build_cors_preflight_response():
     response = make_response()
     response.headers.add("Access-Control-Allow-Origin", "https://voice-access.netlify.app")
@@ -120,7 +123,7 @@ def _build_cors_preflight_response():
     response.headers.add("Access-Control-Allow-Credentials", "true")
     return response
 
-# === 🛡 Добавляем CORS ко всем ответам ===
+# === Always add CORS headers
 @app.after_request
 def apply_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "https://voice-access.netlify.app"
@@ -128,6 +131,19 @@ def apply_cors(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     return response
+
+# === Error protection with CORS
+@app.errorhandler(Exception)
+def handle_error(e):
+    response = jsonify({"success": False, "message": str(e)})
+    response.status_code = 500
+    return apply_cors(response)
+
+@app.errorhandler(404)
+def handle_404(e):
+    response = jsonify({"success": False, "message": "Not Found"})
+    response.status_code = 404
+    return apply_cors(response)
 
 if __name__ == "__main__":
     app.run(debug=True)
