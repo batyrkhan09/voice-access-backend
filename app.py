@@ -9,7 +9,8 @@ import os
 from time import time
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {"origins": ["https://voice-access.netlify.app"]}})
+
 init_db()
 
 # === 🔐 Ограничение попыток входа ===
