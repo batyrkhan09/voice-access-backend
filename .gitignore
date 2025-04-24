@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtualenv
+venv/
+.env
+*.env
+
+# Logs
+*.log
+
+# PyCharm/VSCode
+.idea/
+.vscode/
+
+# DB files
+*.db
+database
+
+# Audio artifacts (если не пушишь их)
+voice_embeddings/
+pretrained_models/

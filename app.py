@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from auth import verify_user
 from models import init_db
@@ -9,7 +9,9 @@ import os
 from time import time
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+
+# Разрешаем доступ только с Netlify-домена
+CORS(app, resources={r"/api/*": {"origins": "https://voice-access.netlify.app"}}, supports_credentials=True)
 
 init_db()
 
@@ -18,8 +20,11 @@ login_attempts = {}  # {username: [кол-во_попыток, время_пос
 MAX_ATTEMPTS = 5
 BLOCK_TIME = 30  # сек
 
-@app.route("/api/can-record", methods=["POST"])
+@app.route("/api/can-record", methods=["POST", "OPTIONS"])
 def can_record():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+
     data = request.get_json()
     username = data.get("username")
     now = time()
@@ -101,6 +106,15 @@ def register():
         return jsonify({"success": False, "message": "Такой пользователь уже существует"}), 409
     except sqlite3.OperationalError as e:
         return jsonify({"success": False, "message": f"Ошибка базы данных: {str(e)}"}), 500
+
+
+def _build_cors_preflight_response():
+    response = make_response()
+    response.headers.add("Access-Control-Allow-Origin", "https://voice-access.netlify.app")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+    response.headers.add("Access-Control-Allow-Credentials", "true")
+    return response
 
 
 if __name__ == "__main__":
