@@ -10,13 +10,13 @@ from time import time
 
 app = Flask(__name__)
 
-# Разрешаем только frontend с Netlify
+# Разрешаем доступ только с Netlify-домена
 CORS(app, resources={r"/api/*": {"origins": "https://voice-access.netlify.app"}}, supports_credentials=True)
 
 init_db()
 
 # === 🔐 Ограничение попыток входа ===
-login_attempts = {}  # {username: [кол-во_попыток, время_последней_неудачи]}
+login_attempts = {}
 MAX_ATTEMPTS = 5
 BLOCK_TIME = 30  # сек
 
@@ -73,7 +73,7 @@ def verify():
     os.remove(audio_path)
 
     if result["success"]:
-        login_attempts[username] = [0, 0]  # сброс попыток
+        login_attempts[username] = [0, 0]
 
     return jsonify(result)
 
@@ -111,7 +111,7 @@ def register():
         return jsonify({"success": False, "message": f"Ошибка базы данных: {str(e)}"}), 500
 
 
-# === CORS Preflight обработка ===
+# === Preflight CORS ===
 def _build_cors_preflight_response():
     response = make_response()
     response.headers.add("Access-Control-Allow-Origin", "https://voice-access.netlify.app")
@@ -120,6 +120,14 @@ def _build_cors_preflight_response():
     response.headers.add("Access-Control-Allow-Credentials", "true")
     return response
 
+# === 🛡 Добавляем CORS ко всем ответам ===
+@app.after_request
+def apply_cors(response):
+    response.headers["Access-Control-Allow-Origin"] = "https://voice-access.netlify.app"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    return response
 
 if __name__ == "__main__":
     app.run(debug=True)
