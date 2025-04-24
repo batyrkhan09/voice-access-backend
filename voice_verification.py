@@ -2,19 +2,22 @@ import os
 import torch
 from pydub import AudioSegment
 from speechbrain.pretrained import SpeakerRecognition
-
 from speechbrain.dataio.dataio import read_audio
 import subprocess
 
 # 🔧 Отключаем предупреждение про симлинки (опционально)
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-# Указываем путь к ffmpeg (для pydub)
-AudioSegment.converter = r"C:\\Users\\tokta\\Desktop\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe"
+# ✅ Указываем путь к ffmpeg локально (НЕ ЗАБУДЬ: для Render он не нужен или замени на просто 'ffmpeg')
+ffmpeg_path = r"C:\\Users\\tokta\\Desktop\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe"
+if os.path.exists(ffmpeg_path):
+    AudioSegment.converter = ffmpeg_path
+else:
+    AudioSegment.converter = "ffmpeg"
 
-# ✅ Загрузка локальной модели speaker verification
+# ✅ Загрузка модели speaker verification с HuggingFace
 verifier = SpeakerRecognition.from_hparams(
-    source="pretrained_models/spkrec-ecapa-voxceleb",
+    source="speechbrain/spkrec-ecapa-voxceleb",
     savedir="pretrained_models/spkrec-ecapa-voxceleb",
     run_opts={"use_symlinks": False}
 )
@@ -43,7 +46,7 @@ def verify_user_voice(audio_path, username):
     ref_embedding = torch.load(embedding_path)
 
     similarity = torch.nn.functional.cosine_similarity(
-    test_embedding.squeeze(1), ref_embedding.squeeze(1)
+        test_embedding.squeeze(1), ref_embedding.squeeze(1)
     )[0].item()
 
     os.remove(wav_path)
@@ -51,15 +54,16 @@ def verify_user_voice(audio_path, username):
     print(f"[DEBUG] Similarity: {similarity:.4f}")
     return similarity > 0.5, f"Similarity: {similarity:.4f}"
 
-
 # === 🎧 Конвертация webm → wav 16kHz mono ===
 def convert_to_wav(webm_path):
     wav_path = webm_path.replace(".webm", ".wav")
+    ffmpeg = AudioSegment.converter
+
     try:
         print(f"[DEBUG] Начинаем конвертацию: {webm_path}")
         result = subprocess.run(
             [
-                r"C:\Users\tokta\Desktop\ffmpeg-7.1.1-essentials_build\bin\ffmpeg.exe",
+                ffmpeg,
                 "-y",                     # overwrite output
                 "-i", webm_path,
                 "-ar", "16000",           # sample rate
@@ -80,4 +84,3 @@ def convert_to_wav(webm_path):
     except Exception as e:
         print(f"[ERROR] Конвертация не удалась: {e}")
         raise
-
